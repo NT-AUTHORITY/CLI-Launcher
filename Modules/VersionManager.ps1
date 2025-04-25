@@ -554,35 +554,93 @@ function Get-InstalledVersions {
     $configFile = Join-Path -Path $configPath -ChildPath "installed.json"
 
     if (-not (Test-Path -Path $configFile)) {
+        Write-DebugLog -Message "installed.json file not found" -Source "VersionManager" -Level "Warning"
         return @()
     }
 
     try {
         $content = Get-Content -Path $configFile -Raw
+        Write-DebugLog -Message "Raw content of installed.json: $content" -Source "VersionManager" -Level "Debug"
+
         if ([string]::IsNullOrWhiteSpace($content)) {
+            Write-DebugLog -Message "installed.json is empty" -Source "VersionManager" -Level "Warning"
             return @()
         }
 
-        $installedVersions = $content | ConvertFrom-Json
+        # Parse the JSON content
+        $installedVersions = @()
 
-        # Ensure we return an array
-        if ($installedVersions -isnot [Array]) {
-            # If it's a single string, convert it to an array
-            if ($installedVersions -is [String]) {
-                $installedVersions = @($installedVersions)
+        try {
+            # Try to parse the JSON content
+            $parsedContent = $content | ConvertFrom-Json
+
+            # Check if the parsed content is an array
+            if ($parsedContent -is [Array]) {
+                Write-DebugLog -Message "Parsed content is an array with $($parsedContent.Count) items" -Source "VersionManager" -Level "Debug"
+                $installedVersions = $parsedContent
+            }
+            # Check if the parsed content is a string (single item)
+            elseif ($parsedContent -is [String]) {
+                Write-DebugLog -Message "Parsed content is a string: $parsedContent" -Source "VersionManager" -Level "Debug"
+                $installedVersions = @($parsedContent)
+            }
+            # Check if the parsed content is a PSCustomObject (JSON object)
+            elseif ($parsedContent -is [PSCustomObject]) {
+                Write-DebugLog -Message "Parsed content is a PSCustomObject" -Source "VersionManager" -Level "Debug"
+                # Extract properties as versions if applicable
+                $properties = $parsedContent | Get-Member -MemberType NoteProperty
+                if ($properties) {
+                    foreach ($prop in $properties) {
+                        $installedVersions += $parsedContent.($prop.Name)
+                    }
+                }
             }
             else {
-                # Create a new array
-                $installedVersions = @()
+                Write-DebugLog -Message "Parsed content is of unknown type: $($parsedContent.GetType().FullName)" -Source "VersionManager" -Level "Warning"
             }
-
-            # Update the file with correct format
-            $json = ConvertTo-Json -InputObject $installedVersions -Depth 1
-            Set-Content -Path $configFile -Value $json
-            Write-DebugLog -Message "Fixed installed.json format" -Source "VersionManager" -Level "Warning"
+        }
+        catch {
+            Write-DebugLog -Message "Error parsing JSON: $($_.Exception.Message)" -Source "VersionManager" -Level "Warning"
         }
 
-        return $installedVersions
+        # If parsing failed or returned empty array, try to scan versions directory
+        if ($installedVersions.Count -eq 0) {
+            Write-DebugLog -Message "No versions found in config, scanning versions directory" -Source "VersionManager" -Level "Info"
+
+            if (Test-Path -Path $versionsPath) {
+                $versionDirs = Get-ChildItem -Path $versionsPath -Directory
+
+                foreach ($dir in $versionDirs) {
+                    $versionId = $dir.Name
+                    $versionJsonFile = Join-Path -Path $dir.FullName -ChildPath "$versionId.json"
+                    $versionJarFile = Join-Path -Path $dir.FullName -ChildPath "$versionId.jar"
+
+                    # Check if version files exist
+                    if ((Test-Path -Path $versionJsonFile) -and (Test-Path -Path $versionJarFile)) {
+                        $installedVersions += $versionId
+                        Write-DebugLog -Message "Found installed version: $versionId" -Source "VersionManager" -Level "Debug"
+                    }
+                }
+
+                # Save the discovered versions to the config file
+                if ($installedVersions.Count -gt 0) {
+                    $json = ConvertTo-Json -InputObject $installedVersions -Depth 1
+                    Set-Content -Path $configFile -Value $json
+                    Write-DebugLog -Message "Updated installed.json with discovered versions" -Source "VersionManager" -Level "Info"
+                }
+            }
+        }
+
+        # Convert each element to string to avoid PowerShell's string interpolation issues
+        $result = @()
+        Write-DebugLog -Message "Converting array elements to strings" -Source "VersionManager" -Level "Debug"
+        foreach ($version in $installedVersions) {
+            Write-DebugLog -Message "Processing version: $version (Type: $($version.GetType().FullName))" -Source "VersionManager" -Level "Debug"
+            $result += $version.ToString()
+        }
+
+        Write-DebugLog -Message "Returning versions: $($result -join ', ')" -Source "VersionManager" -Level "Debug"
+        return $result
     }
     catch {
         Write-DebugLog -Message "Error reading installed versions list: $($_.Exception.Message)" -Source "VersionManager" -Level "Error"
@@ -608,18 +666,35 @@ function Add-InstalledVersion {
             }
             else {
                 try {
-                    $installedVersions = $content | ConvertFrom-Json
+                    # Parse the JSON content
+                    $installedVersions = @()
 
-                    # Ensure $installedVersions is an array
-                    if ($installedVersions -isnot [Array]) {
-                        # If it's a single string, convert it to an array
-                        if ($installedVersions -is [String]) {
-                            $installedVersions = @($installedVersions)
+                    try {
+                        # Try to parse the JSON content
+                        $parsedContent = $content | ConvertFrom-Json
+
+                        # Check if the parsed content is an array
+                        if ($parsedContent -is [Array]) {
+                            $installedVersions = $parsedContent
                         }
-                        else {
-                            # Create a new array
-                            $installedVersions = @()
+                        # Check if the parsed content is a string (single item)
+                        elseif ($parsedContent -is [String]) {
+                            $installedVersions = @($parsedContent)
                         }
+                        # Check if the parsed content is a PSCustomObject (JSON object)
+                        elseif ($parsedContent -is [PSCustomObject]) {
+                            # Extract properties as versions if applicable
+                            $properties = $parsedContent | Get-Member -MemberType NoteProperty
+                            if ($properties) {
+                                foreach ($prop in $properties) {
+                                    $installedVersions += $parsedContent.($prop.Name)
+                                }
+                            }
+                        }
+                    }
+                    catch {
+                        Write-DebugLog -Message "Error parsing JSON: $($_.Exception.Message)" -Source "VersionManager" -Level "Warning"
+                        $installedVersions = @()
                     }
                 }
                 catch {
@@ -671,26 +746,37 @@ function Sync-InstalledVersions {
 
         # Get current installed versions from config
         $currentInstalledVersions = Get-InstalledVersions
+        Write-DebugLog -Message "Current installed versions from config: $($currentInstalledVersions -join ', ')" -Source "VersionManager" -Level "Debug"
 
         # Scan versions directory for actual installed versions
         $actualInstalledVersions = @()
 
         if (Test-Path -Path $versionsPath) {
             $versionDirs = Get-ChildItem -Path $versionsPath -Directory
+            Write-DebugLog -Message "Found version directories: $($versionDirs.Count)" -Source "VersionManager" -Level "Debug"
 
             foreach ($dir in $versionDirs) {
                 $versionId = $dir.Name
+                Write-DebugLog -Message "Processing version directory: $versionId" -Source "VersionManager" -Level "Debug"
                 $versionJsonFile = Join-Path -Path $dir.FullName -ChildPath "$versionId.json"
                 $versionJarFile = Join-Path -Path $dir.FullName -ChildPath "$versionId.jar"
 
                 # Check if version files exist
-                if ((Test-Path -Path $versionJsonFile) -and (Test-Path -Path $versionJarFile)) {
+                $jsonExists = Test-Path -Path $versionJsonFile
+                $jarExists = Test-Path -Path $versionJarFile
+                Write-DebugLog -Message "Version $versionId - JSON exists: $jsonExists, JAR exists: $jarExists" -Source "VersionManager" -Level "Debug"
+
+                if ($jsonExists -and $jarExists) {
                     $actualInstalledVersions += $versionId
+                    Write-DebugLog -Message "Added $versionId to actual installed versions" -Source "VersionManager" -Level "Debug"
                 }
                 else {
                     Write-DebugLog -Message "Incomplete version found: $versionId" -Source "VersionManager" -Level "Warning"
                 }
             }
+        }
+        else {
+            Write-DebugLog -Message "Versions directory does not exist: $versionsPath" -Source "VersionManager" -Level "Warning"
         }
 
         # Compare lists
@@ -698,23 +784,47 @@ function Sync-InstalledVersions {
         $removed = @()
 
         # Find versions that are installed but not in the list
+        Write-DebugLog -Message "Comparing actual versions with config versions" -Source "VersionManager" -Level "Debug"
         foreach ($version in $actualInstalledVersions) {
+            Write-DebugLog -Message "Checking if $version is in config list" -Source "VersionManager" -Level "Debug"
             if ($currentInstalledVersions -notcontains $version) {
+                Write-DebugLog -Message "Version $version is not in config list, adding to 'added' list" -Source "VersionManager" -Level "Debug"
                 $added += $version
             }
         }
 
         # Find versions that are in the list but not actually installed
         foreach ($version in $currentInstalledVersions) {
+            Write-DebugLog -Message "Checking if $version is actually installed" -Source "VersionManager" -Level "Debug"
             if ($actualInstalledVersions -notcontains $version) {
+                Write-DebugLog -Message "Version $version is in config but not actually installed, adding to 'removed' list" -Source "VersionManager" -Level "Debug"
                 $removed += $version
             }
         }
 
         # Update installed.json if changes were found
         if ($added.Count -gt 0 -or $removed.Count -gt 0) {
+            Write-DebugLog -Message "Changes found: Added $($added.Count), Removed $($removed.Count)" -Source "VersionManager" -Level "Info"
+            Write-DebugLog -Message "Added versions: $($added -join ', ')" -Source "VersionManager" -Level "Debug"
+            Write-DebugLog -Message "Removed versions: $($removed -join ', ')" -Source "VersionManager" -Level "Debug"
+
+            # Ensure $actualInstalledVersions is an array before converting to JSON
+            if ($actualInstalledVersions -isnot [Array]) {
+                Write-DebugLog -Message "Converting actualInstalledVersions to array" -Source "VersionManager" -Level "Warning"
+                $actualInstalledVersions = @($actualInstalledVersions)
+            }
+
+            # Create a clean array of strings
+            $cleanVersions = @()
+            foreach ($version in $actualInstalledVersions) {
+                if ($version) {
+                    $cleanVersions += $version.ToString()
+                }
+            }
+
             # Save the updated list
-            $json = ConvertTo-Json -InputObject $actualInstalledVersions -Depth 1
+            $json = ConvertTo-Json -InputObject $cleanVersions -Depth 1
+            Write-DebugLog -Message "Saving updated JSON: $json" -Source "VersionManager" -Level "Debug"
             Set-Content -Path $configFile -Value $json
 
             Write-DebugLog -Message "Updated installed versions list: Added $($added.Count), Removed $($removed.Count)" -Source "VersionManager" -Level "Info"
@@ -739,6 +849,7 @@ function Sync-InstalledVersions {
         }
         else {
             Write-DebugLog -Message "Installed versions list is up to date" -Source "VersionManager" -Level "Debug"
+            Write-DebugLog -Message "Current versions: $($actualInstalledVersions -join ', ')" -Source "VersionManager" -Level "Debug"
             return $false
         }
     }

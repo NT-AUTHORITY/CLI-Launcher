@@ -1,8 +1,9 @@
 # GameLauncher.ps1
 # Module for handling Minecraft game launching
 
-# Load necessary .NET types
-Add-Type -TypeDefinition @"
+# Load necessary .NET types only if they don't already exist
+if (-not ([System.Management.Automation.PSTypeName]'MinecraftLauncher.GameLauncher').Type) {
+    Add-Type -TypeDefinition @"
 using System;
 using System.IO;
 using System.Diagnostics;
@@ -46,27 +47,67 @@ namespace MinecraftLauncher {
                 EnableRaisingEvents = true
             };
 
+            // Use a flag to track if the log file has been closed
+            bool logClosed = false;
+
             process.OutputDataReceived += (sender, e) => {
-                if (!string.IsNullOrEmpty(e.Data)) {
-                    // Write to log file only
-                    logWriter.WriteLine(e.Data);
+                if (!string.IsNullOrEmpty(e.Data) && !logClosed) {
+                    try {
+                        // Write to log file only
+                        logWriter.WriteLine(e.Data);
+                    }
+                    catch (ObjectDisposedException) {
+                        // Log writer was already closed
+                        logClosed = true;
+                    }
                 }
             };
 
             process.ErrorDataReceived += (sender, e) => {
-                if (!string.IsNullOrEmpty(e.Data)) {
-                    // Write to log file only
-                    logWriter.WriteLine("ERROR: " + e.Data);
+                if (!string.IsNullOrEmpty(e.Data) && !logClosed) {
+                    try {
+                        // Write to log file only
+                        logWriter.WriteLine("ERROR: " + e.Data);
+                    }
+                    catch (ObjectDisposedException) {
+                        // Log writer was already closed
+                        logClosed = true;
+                    }
                 }
             };
 
             // Handle process exit to close log file
             process.Exited += (sender, e) => {
-                logWriter.WriteLine();
-                logWriter.WriteLine("=== Game Exited ===");
-                logWriter.WriteLine("Time: " + DateTime.Now.ToString());
-                logWriter.WriteLine("Exit Code: " + process.ExitCode);
-                logWriter.Close();
+                if (!logClosed) {
+                    try {
+                        logWriter.WriteLine();
+                        logWriter.WriteLine("=== Game Exited ===");
+                        logWriter.WriteLine("Time: " + DateTime.Now.ToString());
+                        logWriter.WriteLine("Exit Code: " + process.ExitCode);
+                        logWriter.Close();
+                        logClosed = true;
+                    }
+                    catch (Exception ex) {
+                        // Handle any exceptions during log closing
+                        Console.WriteLine("Error closing log file: " + ex.Message);
+                    }
+                }
+            };
+
+            // Register for application domain unload to ensure log file is closed
+            AppDomain.CurrentDomain.ProcessExit += (sender, e) => {
+                if (!logClosed) {
+                    try {
+                        logWriter.WriteLine();
+                        logWriter.WriteLine("=== Application Exit ===");
+                        logWriter.WriteLine("Time: " + DateTime.Now.ToString());
+                        logWriter.Close();
+                        logClosed = true;
+                    }
+                    catch {
+                        // Ignore errors during shutdown
+                    }
+                }
             };
 
             process.Start();
@@ -80,16 +121,31 @@ namespace MinecraftLauncher {
             StringBuilder sb = new StringBuilder();
 
             foreach (string library in libraries) {
-                sb.Append(Path.Combine(librariesPath, library));
+                string fullPath = Path.Combine(librariesPath, library);
+
+                // Check if the path contains spaces, if so, wrap in quotes
+                if (fullPath.Contains(" ") && !fullPath.StartsWith("\"") && !fullPath.EndsWith("\"")) {
+                    sb.Append("\"").Append(fullPath).Append("\"");
+                } else {
+                    sb.Append(fullPath);
+                }
+
                 sb.Append(";");
             }
 
-            sb.Append(versionJar);
+            // Check if version jar path contains spaces
+            if (versionJar.Contains(" ") && !versionJar.StartsWith("\"") && !versionJar.EndsWith("\"")) {
+                sb.Append("\"").Append(versionJar).Append("\"");
+            } else {
+                sb.Append(versionJar);
+            }
+
             return sb.ToString();
         }
     }
 }
 "@
+}
 
 # Launch Minecraft game
 function Start-MinecraftGame {
@@ -343,6 +399,19 @@ function Start-MinecraftGame {
         # Record last launched version
         $launcherConfig.LastVersion = $Version
         Save-LauncherConfig -Config $launcherConfig
+
+        # If debug mode is enabled, wait for the process to exit
+        if ($config.DebugMode) {
+            try {
+                Write-Host "Debug mode is enabled. Press Ctrl+C to return to launcher..." -ForegroundColor Yellow
+                # Wait for the process to exit or for user to press Ctrl+C
+                $process.WaitForExit()
+                Write-Host "Game process has exited with code: $($process.ExitCode)" -ForegroundColor Cyan
+            }
+            catch {
+                Write-DebugLog -Message "Error waiting for game process: $($_.Exception.Message)" -Source "GameLauncher" -Level "Warning"
+            }
+        }
     }
     catch {
         Write-DebugLog -Message "Error launching game: $($_.Exception.Message)" -Source "GameLauncher" -Level "Error"

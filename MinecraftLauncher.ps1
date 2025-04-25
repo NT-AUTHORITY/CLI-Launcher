@@ -103,12 +103,28 @@ while ($true) {
 
             # Display installed versions
             Write-Host "Installed versions:" -ForegroundColor Cyan
-            for ($i = 0; $i -lt $installedVersions.Count; $i++) {
-                $version = $installedVersions[$i]
+
+            # Get actual versions from the versions directory
+            $actualVersions = @()
+            $versionDirs = Get-ChildItem -Path $versionsPath -Directory
+            foreach ($dir in $versionDirs) {
+                $versionId = $dir.Name
+                $versionJsonFile = Join-Path -Path $dir.FullName -ChildPath "$versionId.json"
+                $versionJarFile = Join-Path -Path $dir.FullName -ChildPath "$versionId.jar"
+
+                # Check if version files exist
+                if ((Test-Path -Path $versionJsonFile) -and (Test-Path -Path $versionJarFile)) {
+                    $actualVersions += $versionId
+                }
+            }
+
+            # Display versions
+            for ($i = 0; $i -lt $actualVersions.Count; $i++) {
+                $version = $actualVersions[$i]
                 if ($version -eq $defaultVersion) {
                     Write-Host "$($i+1). $version (default)" -ForegroundColor Green
                 } else {
-                    Write-Host "$($i+1). $version"
+                    Write-Host "$($i+1). $version" -ForegroundColor White
                 }
             }
 
@@ -118,8 +134,8 @@ while ($true) {
                 $selectedVersion = $defaultVersion
             } else {
                 $index = [int]$versionChoice - 1
-                if ($index -ge 0 -and $index -lt $installedVersions.Count) {
-                    $selectedVersion = $installedVersions[$index]
+                if ($index -ge 0 -and $index -lt $actualVersions.Count) {
+                    $selectedVersion = $actualVersions[$index]
                 } else {
                     Write-Host "Invalid choice. Using default version: $defaultVersion" -ForegroundColor Yellow
                     $selectedVersion = $defaultVersion
@@ -157,8 +173,23 @@ while ($true) {
             Write-Host "===== Launch with Mod Loader =====" -ForegroundColor Green
             Write-Host "Step 1: Select Minecraft version" -ForegroundColor Cyan
 
-            for ($i = 0; $i -lt $installedVersions.Count; $i++) {
-                Write-Host "$($i+1). $($installedVersions[$i])"
+            # Get actual versions from the versions directory
+            $actualVersions = @()
+            $versionDirs = Get-ChildItem -Path $versionsPath -Directory
+            foreach ($dir in $versionDirs) {
+                $versionId = $dir.Name
+                $versionJsonFile = Join-Path -Path $dir.FullName -ChildPath "$versionId.json"
+                $versionJarFile = Join-Path -Path $dir.FullName -ChildPath "$versionId.jar"
+
+                # Check if version files exist
+                if ((Test-Path -Path $versionJsonFile) -and (Test-Path -Path $versionJarFile)) {
+                    $actualVersions += $versionId
+                }
+            }
+
+            # Display versions
+            for ($i = 0; $i -lt $actualVersions.Count; $i++) {
+                Write-Host "$($i+1). $($actualVersions[$i])" -ForegroundColor White
             }
 
             Write-Host "0. Return to main menu" -ForegroundColor Yellow
@@ -169,73 +200,82 @@ while ($true) {
                 continue
             }
 
-            $versionIndex = [int]$versionChoice - 1
+            # Try to parse the choice as an integer
+            if ([int]::TryParse($versionChoice, [ref]$null)) {
+                $versionIndex = [int]$versionChoice - 1
 
-            if ($versionIndex -ge 0 -and $versionIndex -lt $installedVersions.Count) {
-                $selectedVersion = $installedVersions[$versionIndex]
+                if ($versionIndex -ge 0 -and $versionIndex -lt $actualVersions.Count) {
+                    $selectedVersion = $actualVersions[$versionIndex]
 
-                # Get mod loaders for this version
-                $modLoaders = Get-InstalledModLoaders -MinecraftVersion $selectedVersion
+                    # Get mod loaders for this version
+                    $modLoaders = Get-InstalledModLoaders -MinecraftVersion $selectedVersion
 
-                if ($modLoaders.Count -eq 0) {
-                    Write-Host "No mod loaders installed for Minecraft $selectedVersion" -ForegroundColor Yellow
-                    Write-Host "Would you like to install a mod loader now? (Y/N)" -ForegroundColor Cyan
-                    $installChoice = Read-Host
+                    if ($modLoaders.Count -eq 0) {
+                        Write-Host "No mod loaders installed for Minecraft $selectedVersion" -ForegroundColor Yellow
+                        Write-Host "Would you like to install a mod loader now? (Y/N)" -ForegroundColor Cyan
+                        $installChoice = Read-Host
 
-                    if ($installChoice -eq "Y" -or $installChoice -eq "y") {
-                        Show-ModLoaderMenu -MinecraftVersion $selectedVersion
+                        if ($installChoice -eq "Y" -or $installChoice -eq "y") {
+                            Show-ModLoaderMenu -MinecraftVersion $selectedVersion
 
-                        # Check again if mod loaders were installed
-                        $modLoaders = Get-InstalledModLoaders -MinecraftVersion $selectedVersion
+                            # Check again if mod loaders were installed
+                            $modLoaders = Get-InstalledModLoaders -MinecraftVersion $selectedVersion
 
-                        if ($modLoaders.Count -eq 0) {
-                            Write-Host "No mod loaders installed. Returning to main menu." -ForegroundColor Yellow
-                            Write-Host "Press any key to continue..." -ForegroundColor Gray
-                            $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+                            if ($modLoaders.Count -eq 0) {
+                                Write-Host "No mod loaders installed. Returning to main menu." -ForegroundColor Yellow
+                                Write-Host "Press any key to continue..." -ForegroundColor Gray
+                                $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+                                continue
+                            }
+                        } else {
                             continue
                         }
-                    } else {
+                    }
+
+                    # Display installed mod loaders
+                    Clear-Host
+                    Write-Host "===== Launch with Mod Loader =====" -ForegroundColor Green
+                    Write-Host "Step 2: Select mod loader for Minecraft $selectedVersion" -ForegroundColor Cyan
+
+                    for ($i = 0; $i -lt $modLoaders.Count; $i++) {
+                        Write-Host "$($i+1). $($modLoaders[$i].Type) $($modLoaders[$i].Version)" -ForegroundColor White
+                    }
+
+                    Write-Host "0. Return to main menu" -ForegroundColor Yellow
+
+                    $modLoaderChoice = Read-Host "Select mod loader"
+
+                    if ($modLoaderChoice -eq "0") {
                         continue
                     }
-                }
 
-                # Display installed mod loaders
-                Clear-Host
-                Write-Host "===== Launch with Mod Loader =====" -ForegroundColor Green
-                Write-Host "Step 2: Select mod loader for Minecraft $selectedVersion" -ForegroundColor Cyan
+                    $modLoaderIndex = [int]$modLoaderChoice - 1
 
-                for ($i = 0; $i -lt $modLoaders.Count; $i++) {
-                    Write-Host "$($i+1). $($modLoaders[$i].Type) $($modLoaders[$i].Version)" -ForegroundColor White
-                }
+                    if ($modLoaderIndex -ge 0 -and $modLoaderIndex -lt $modLoaders.Count) {
+                        $selectedModLoader = $modLoaders[$modLoaderIndex]
 
-                Write-Host "0. Return to main menu" -ForegroundColor Yellow
+                        # Launch the game with mod loader
+                        Write-Host "Launching Minecraft $selectedVersion with $($selectedModLoader.Type) $($selectedModLoader.Version)..." -ForegroundColor Green
+                        Start-MinecraftGame -Version $selectedVersion -UseModLoader -ModLoaderType $selectedModLoader.Type -ModLoaderVersion $selectedModLoader.Version
 
-                $modLoaderChoice = Read-Host "Select mod loader"
-
-                if ($modLoaderChoice -eq "0") {
-                    continue
-                }
-
-                $modLoaderIndex = [int]$modLoaderChoice - 1
-
-                if ($modLoaderIndex -ge 0 -and $modLoaderIndex -lt $modLoaders.Count) {
-                    $selectedModLoader = $modLoaders[$modLoaderIndex]
-
-                    # Launch the game with mod loader
-                    Write-Host "Launching Minecraft $selectedVersion with $($selectedModLoader.Type) $($selectedModLoader.Version)..." -ForegroundColor Green
-                    Start-MinecraftGame -Version $selectedVersion -UseModLoader -ModLoaderType $selectedModLoader.Type -ModLoaderVersion $selectedModLoader.Version
-
-                    # Update last version in config
-                    Update-LauncherConfig -LastVersion $selectedVersion
+                        # Update last version in config
+                        Update-LauncherConfig -LastVersion $selectedVersion
+                    } else {
+                        Write-Host "Invalid choice" -ForegroundColor Red
+                        Write-Host "Press any key to continue..." -ForegroundColor Gray
+                        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+                    }
                 } else {
-                    Write-Host "Invalid choice" -ForegroundColor Red
+                    Write-Host "Invalid choice. Please select a valid number." -ForegroundColor Yellow
                     Write-Host "Press any key to continue..." -ForegroundColor Gray
                     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+                    continue
                 }
             } else {
-                Write-Host "Invalid choice" -ForegroundColor Red
+                Write-Host "Invalid choice. Please enter a number." -ForegroundColor Yellow
                 Write-Host "Press any key to continue..." -ForegroundColor Gray
                 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+                continue
             }
         }
         "5" { # Settings
