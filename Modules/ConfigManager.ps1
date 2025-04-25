@@ -13,7 +13,7 @@ function Initialize-LauncherConfig {
             LastVersion = $null
             LauncherTheme = "Default"
             DebugMode = $false
-            MaxDownloadThreads = 8
+            MaxDownloadThreads = 16
             UseMultithreadDownload = $true
             DownloadMirror = "Official"
             CustomMirrorUrl = ""
@@ -52,7 +52,7 @@ function Get-LauncherConfig {
             LastVersion = $null
             LauncherTheme = "Default"
             DebugMode = $false
-            MaxDownloadThreads = 8
+            MaxDownloadThreads = 16
             UseMultithreadDownload = $true
             DownloadMirror = "Official"
             CustomMirrorUrl = ""
@@ -289,13 +289,13 @@ function Show-SettingsMenu {
                 $useMultithreadEnabled = $useMultithread -eq "Y" -or $useMultithread -eq "y"
 
                 if ($useMultithreadEnabled) {
-                    $maxThreads = Read-Host "Enter maximum number of download threads (4-32)"
-                    if ([int]::TryParse($maxThreads, [ref]$null) -and [int]$maxThreads -ge 4 -and [int]$maxThreads -le 32) {
+                    $maxThreads = Read-Host "Enter maximum number of download threads (8-1024)"
+                    if ([int]::TryParse($maxThreads, [ref]$null) -and [int]$maxThreads -ge 8 -and [int]$maxThreads -le 1024) {
                         Update-LauncherConfig -MaxDownloadThreads ([int]$maxThreads) -UseMultithreadDownload
                     }
                     else {
-                        Write-Host "Invalid thread count. Using default of 8 threads." -ForegroundColor Yellow
-                        Update-LauncherConfig -MaxDownloadThreads 8 -UseMultithreadDownload
+                        Write-Host "Invalid thread count. Using default of 16 threads." -ForegroundColor Yellow
+                        Update-LauncherConfig -MaxDownloadThreads 16 -UseMultithreadDownload
                     }
                 }
                 else {
