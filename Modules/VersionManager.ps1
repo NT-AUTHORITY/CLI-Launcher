@@ -1,6 +1,98 @@
 # VersionManager.ps1
 # Module for managing Minecraft versions
 
+# Define mirror URLs
+$MIRROR_URLS = @{
+    "Official" = @{
+        "VersionManifest" = "https://launchermeta.mojang.com/mc/game/version_manifest.json"
+        "LauncherMeta" = "https://launchermeta.mojang.com"
+        "Resources" = "https://resources.download.minecraft.net"
+        "Libraries" = "https://libraries.minecraft.net"
+    }
+    "BMCLAPI" = @{
+        "VersionManifest" = "https://bmclapi2.bangbang93.com/mc/game/version_manifest.json"
+        "LauncherMeta" = "https://bmclapi2.bangbang93.com"
+        "Resources" = "https://bmclapi2.bangbang93.com/assets"
+        "Libraries" = "https://bmclapi2.bangbang93.com/maven"
+    }
+    "MCBBS" = @{
+        "VersionManifest" = "https://download.mcbbs.net/mc/game/version_manifest.json"
+        "LauncherMeta" = "https://download.mcbbs.net"
+        "Resources" = "https://download.mcbbs.net/assets"
+        "Libraries" = "https://download.mcbbs.net/maven"
+    }
+}
+
+# Function to convert URLs based on selected mirror
+function Convert-ToMirrorUrl {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Url
+    )
+
+    $config = Get-LauncherConfig
+    $mirror = $config.DownloadMirror
+
+    # If using official mirror or mirror not configured, return original URL
+    if ($mirror -eq "Official" -or -not $MIRROR_URLS.ContainsKey($mirror)) {
+        return $Url
+    }
+
+    # If using custom mirror
+    if ($mirror -eq "Custom" -and $config.CustomMirrorUrl) {
+        $customBase = $config.CustomMirrorUrl.TrimEnd('/')
+
+        # Handle version manifest
+        if ($Url -eq "https://launchermeta.mojang.com/mc/game/version_manifest.json") {
+            return "$customBase/mc/game/version_manifest.json"
+        }
+
+        # Handle launcher meta URLs
+        if ($Url -match "^https://launchermeta\.mojang\.com/(.+)$") {
+            return "$customBase/$($matches[1])"
+        }
+
+        # Handle resource URLs
+        if ($Url -match "^https://resources\.download\.minecraft\.net/(.+)$") {
+            return "$customBase/assets/$($matches[1])"
+        }
+
+        # Handle library URLs
+        if ($Url -match "^https://libraries\.minecraft\.net/(.+)$") {
+            return "$customBase/maven/$($matches[1])"
+        }
+
+        # If no pattern matches, return original URL
+        return $Url
+    }
+
+    # Handle known mirrors (BMCLAPI, MCBBS)
+    $mirrorUrls = $MIRROR_URLS[$mirror]
+
+    # Handle version manifest
+    if ($Url -eq "https://launchermeta.mojang.com/mc/game/version_manifest.json") {
+        return $mirrorUrls.VersionManifest
+    }
+
+    # Handle launcher meta URLs
+    if ($Url -match "^https://launchermeta\.mojang\.com/(.+)$") {
+        return "$($mirrorUrls.LauncherMeta)/$($matches[1])"
+    }
+
+    # Handle resource URLs
+    if ($Url -match "^https://resources\.download\.minecraft\.net/(.+)$") {
+        return "$($mirrorUrls.Resources)/$($matches[1])"
+    }
+
+    # Handle library URLs
+    if ($Url -match "^https://libraries\.minecraft\.net/(.+)$") {
+        return "$($mirrorUrls.Libraries)/$($matches[1])"
+    }
+
+    # If no pattern matches, return original URL
+    return $Url
+}
+
 # Define PowerShell functions for web requests
 function Get-WebContent {
     param (
@@ -9,12 +101,37 @@ function Get-WebContent {
     )
 
     try {
-        $response = Invoke-WebRequest -Uri $Url -UseBasicParsing
+        # Convert URL to mirror URL if needed
+        $mirrorUrl = Convert-ToMirrorUrl -Url $Url
+
+        if ($mirrorUrl -ne $Url) {
+            Write-DebugLog -Message "Using mirror URL: $mirrorUrl (original: $Url)" -Source "VersionManager" -Level "Debug"
+        }
+
+        $response = Invoke-WebRequest -Uri $mirrorUrl -UseBasicParsing
         return $response.Content
     }
     catch {
         Write-DebugLog -Message "Error downloading content from $Url - $($_.Exception.Message)" -Source "VersionManager" -Level "Error"
-        throw
+
+        # If using a mirror and it failed, try the original URL as fallback
+        $config = Get-LauncherConfig
+        if ($config.DownloadMirror -ne "Official" -and $Url -ne (Convert-ToMirrorUrl -Url $Url)) {
+            try {
+                Write-DebugLog -Message "Mirror download failed, trying official URL as fallback" -Source "VersionManager" -Level "Warning"
+                Write-Host "  Mirror download failed, trying official URL..." -ForegroundColor Yellow
+
+                $response = Invoke-WebRequest -Uri $Url -UseBasicParsing
+                return $response.Content
+            }
+            catch {
+                Write-DebugLog -Message "Fallback download also failed - $($_.Exception.Message)" -Source "VersionManager" -Level "Error"
+                throw
+            }
+        }
+        else {
+            throw
+        }
     }
 }
 
@@ -33,11 +150,35 @@ function Save-WebFile {
             New-Item -Path $directory -ItemType Directory -Force | Out-Null
         }
 
-        Invoke-WebRequest -Uri $Url -OutFile $FilePath -UseBasicParsing
+        # Convert URL to mirror URL if needed
+        $mirrorUrl = Convert-ToMirrorUrl -Url $Url
+
+        if ($mirrorUrl -ne $Url) {
+            Write-DebugLog -Message "Using mirror URL: $mirrorUrl (original: $Url)" -Source "VersionManager" -Level "Debug"
+        }
+
+        Invoke-WebRequest -Uri $mirrorUrl -OutFile $FilePath -UseBasicParsing
     }
     catch {
         Write-DebugLog -Message "Error downloading file from $Url to $FilePath - $($_.Exception.Message)" -Source "VersionManager" -Level "Error"
-        throw
+
+        # If using a mirror and it failed, try the original URL as fallback
+        $config = Get-LauncherConfig
+        if ($config.DownloadMirror -ne "Official" -and $Url -ne (Convert-ToMirrorUrl -Url $Url)) {
+            try {
+                Write-DebugLog -Message "Mirror download failed, trying official URL as fallback" -Source "VersionManager" -Level "Warning"
+                Write-Host "  Mirror download failed, trying official URL..." -ForegroundColor Yellow
+
+                Invoke-WebRequest -Uri $Url -OutFile $FilePath -UseBasicParsing
+            }
+            catch {
+                Write-DebugLog -Message "Fallback download also failed - $($_.Exception.Message)" -Source "VersionManager" -Level "Error"
+                throw
+            }
+        }
+        else {
+            throw
+        }
     }
 }
 
@@ -90,7 +231,7 @@ function Start-MultiThreadedDownload {
         $pool.Open()
 
         $scriptBlock = {
-            param($url, $filePath)
+            param($url, $filePath, $originalUrl)
 
             try {
                 $directory = Split-Path -Path $filePath -Parent
@@ -106,10 +247,31 @@ function Start-MultiThreadedDownload {
                 }
             }
             catch {
-                return @{
-                    Success = $false
-                    FilePath = $filePath
-                    Error = $_.Exception.Message
+                # If we have an original URL and it's different from the mirror URL, try it as fallback
+                if ($originalUrl -and $originalUrl -ne $url) {
+                    try {
+                        Invoke-WebRequest -Uri $originalUrl -OutFile $filePath -UseBasicParsing
+                        return @{
+                            Success = $true
+                            FilePath = $filePath
+                            Error = $null
+                            Fallback = $true
+                        }
+                    }
+                    catch {
+                        return @{
+                            Success = $false
+                            FilePath = $filePath
+                            Error = $_.Exception.Message
+                        }
+                    }
+                }
+                else {
+                    return @{
+                        Success = $false
+                        FilePath = $filePath
+                        Error = $_.Exception.Message
+                    }
                 }
             }
         }
@@ -117,15 +279,26 @@ function Start-MultiThreadedDownload {
         # Create and start jobs
         $jobs = @()
         $totalFiles = $DownloadList.Count
+        $fallbackCount = 0
 
         foreach ($item in $DownloadList) {
-            $powershell = [powershell]::Create().AddScript($scriptBlock).AddArgument($item.Url).AddArgument($item.FilePath)
+            # Convert URL to mirror URL if needed
+            $originalUrl = $item.Url
+            $mirrorUrl = Convert-ToMirrorUrl -Url $originalUrl
+
+            if ($mirrorUrl -ne $originalUrl) {
+                Write-DebugLog -Message "Using mirror URL for $($item.Name): $mirrorUrl" -Source "VersionManager" -Level "Debug"
+            }
+
+            $powershell = [powershell]::Create().AddScript($scriptBlock).AddArgument($mirrorUrl).AddArgument($item.FilePath).AddArgument($originalUrl)
             $powershell.RunspacePool = $pool
 
             $jobs += [PSCustomObject]@{
                 PowerShell = $powershell
                 Handle = $powershell.BeginInvoke()
                 Item = $item
+                MirrorUrl = $mirrorUrl
+                OriginalUrl = $originalUrl
             }
         }
 

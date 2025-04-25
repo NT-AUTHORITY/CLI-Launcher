@@ -15,6 +15,8 @@ function Initialize-LauncherConfig {
             DebugMode = $false
             MaxDownloadThreads = 8
             UseMultithreadDownload = $true
+            DownloadMirror = "Official"
+            CustomMirrorUrl = ""
         }
 
         $defaultConfig | ConvertTo-Json | Set-Content -Path $configFile
@@ -32,10 +34,42 @@ function Get-LauncherConfig {
 
     try {
         $config = Get-Content -Path $configFile -Raw | ConvertFrom-Json
+
+        # Define default configuration values
+        $defaultConfig = @{
+            MinMemory = 1024
+            MaxMemory = 2048
+            JavaPath = $null
+            LastVersion = $null
+            LauncherTheme = "Default"
+            DebugMode = $false
+            MaxDownloadThreads = 8
+            UseMultithreadDownload = $true
+            DownloadMirror = "Official"
+            CustomMirrorUrl = ""
+        }
+
+        # Check for missing properties and add them with default values
+        $configUpdated = $false
+        foreach ($key in $defaultConfig.Keys) {
+            if (-not (Get-Member -InputObject $config -Name $key -MemberType Properties)) {
+                Write-DebugLog -Message "Adding missing config property: $key" -Source "ConfigManager" -Level "Warning"
+                Add-Member -InputObject $config -MemberType NoteProperty -Name $key -Value $defaultConfig[$key]
+                $configUpdated = $true
+            }
+        }
+
+        # Save the updated config if needed
+        if ($configUpdated) {
+            Write-DebugLog -Message "Updating config file with missing properties" -Source "ConfigManager" -Level "Info"
+            $config | ConvertTo-Json | Set-Content -Path $configFile
+        }
+
         return $config
     }
     catch {
         Write-Host "Error reading configuration file" -ForegroundColor Red
+        Write-DebugLog -Message "Error reading configuration file: $($_.Exception.Message)" -Source "ConfigManager" -Level "Error"
         Initialize-LauncherConfig
         return Get-LauncherConfig
     }
@@ -68,7 +102,9 @@ function Update-LauncherConfig {
         [string]$LauncherTheme,
         [switch]$DebugMode,
         [int]$MaxDownloadThreads,
-        [switch]$UseMultithreadDownload
+        [switch]$UseMultithreadDownload,
+        [string]$DownloadMirror,
+        [string]$CustomMirrorUrl
     )
 
     $config = Get-LauncherConfig
@@ -101,6 +137,14 @@ function Update-LauncherConfig {
         $config.UseMultithreadDownload = $UseMultithreadDownload.IsPresent
     }
 
+    if ($DownloadMirror) {
+        $config.DownloadMirror = $DownloadMirror
+    }
+
+    if ($PSBoundParameters.ContainsKey('CustomMirrorUrl')) {
+        $config.CustomMirrorUrl = $CustomMirrorUrl
+    }
+
     Save-LauncherConfig -Config $config
 }
 
@@ -118,7 +162,8 @@ function Show-SettingsMenu {
         Write-Host "4. Debug Mode (Current: $debugStatus)"
         $multithreadStatus = if ($config.UseMultithreadDownload) { 'Enabled' } else { 'Disabled' }
         Write-Host "5. Multithread Download (Current: $multithreadStatus, Threads: $($config.MaxDownloadThreads))"
-        Write-Host "6. Return to Main Menu"
+        Write-Host "6. Download Mirror (Current: $($config.DownloadMirror))"
+        Write-Host "7. Return to Main Menu"
 
         $choice = Read-Host "Please select an option"
 
@@ -189,6 +234,47 @@ function Show-SettingsMenu {
                 Start-Sleep -Seconds 1
             }
             "6" {
+                Clear-Host
+                Write-Host "===== Download Mirror Settings =====" -ForegroundColor Cyan
+                Write-Host "Select a download mirror:"
+                Write-Host "1. Official (Mojang)"
+                Write-Host "2. BMCLAPI (China)"
+                Write-Host "3. MCBBS (China)"
+                Write-Host "4. Custom"
+
+                $mirrorChoice = Read-Host "Please select a mirror"
+
+                switch ($mirrorChoice) {
+                    "1" {
+                        Update-LauncherConfig -DownloadMirror "Official"
+                        Write-Host "Download mirror set to Official" -ForegroundColor Green
+                    }
+                    "2" {
+                        Update-LauncherConfig -DownloadMirror "BMCLAPI"
+                        Write-Host "Download mirror set to BMCLAPI" -ForegroundColor Green
+                    }
+                    "3" {
+                        Update-LauncherConfig -DownloadMirror "MCBBS"
+                        Write-Host "Download mirror set to MCBBS" -ForegroundColor Green
+                    }
+                    "4" {
+                        $customUrl = Read-Host "Enter custom mirror base URL (e.g., https://example.com/minecraft)"
+                        if ($customUrl) {
+                            Update-LauncherConfig -DownloadMirror "Custom" -CustomMirrorUrl $customUrl
+                            Write-Host "Download mirror set to Custom: $customUrl" -ForegroundColor Green
+                        }
+                        else {
+                            Write-Host "Custom mirror URL cannot be empty" -ForegroundColor Red
+                        }
+                    }
+                    default {
+                        Write-Host "Invalid choice, mirror not changed" -ForegroundColor Red
+                    }
+                }
+
+                Start-Sleep -Seconds 1
+            }
+            "7" {
                 return
             }
             default {
