@@ -270,9 +270,15 @@ function Start-MinecraftGame {
             foreach ($arg in $versionInfo.arguments.game) {
                 if ($arg -is [string]) {
                     $processedArg = $arg
+                    # Get isolated game directory if version isolation is enabled
+                    $gameDir = Get-IsolatedGameDirectory -Version $Version -ModLoaderType $ModLoaderType -ModLoaderVersion $ModLoaderVersion
+
+                    # Ensure all isolated directories exist
+                    Ensure-IsolatedDirectories -Version $Version -ModLoaderType $ModLoaderType -ModLoaderVersion $ModLoaderVersion
+
                     $processedArg = $processedArg.Replace('${auth_player_name}', $authStatus.Username)
                     $processedArg = $processedArg.Replace('${version_name}', $Version)
-                    $processedArg = $processedArg.Replace('${game_directory}', $minecraftPath)
+                    $processedArg = $processedArg.Replace('${game_directory}', $gameDir)
                     $processedArg = $processedArg.Replace('${assets_root}', $assetsPath)
                     $processedArg = $processedArg.Replace('${assets_index_name}', $versionInfo.assetIndex.id)
                     $processedArg = $processedArg.Replace('${auth_uuid}', $authStatus.UUID)
@@ -286,12 +292,18 @@ function Start-MinecraftGame {
         else {
             # Legacy version compatibility
             Write-DebugLog -Message "Using legacy game arguments format" -Source "GameLauncher" -Level "Debug"
+            # Get isolated game directory if version isolation is enabled
+            $gameDir = Get-IsolatedGameDirectory -Version $Version -ModLoaderType $ModLoaderType -ModLoaderVersion $ModLoaderVersion
+
+            # Ensure all isolated directories exist
+            Ensure-IsolatedDirectories -Version $Version -ModLoaderType $ModLoaderType -ModLoaderVersion $ModLoaderVersion
+
             $gameArgs += "--username"
             $gameArgs += $authStatus.Username
             $gameArgs += "--version"
             $gameArgs += $Version
             $gameArgs += "--gameDir"
-            $gameArgs += $minecraftPath
+            $gameArgs += $gameDir
             $gameArgs += "--assetsDir"
             $gameArgs += $assetsPath
             $gameArgs += "--assetIndex"

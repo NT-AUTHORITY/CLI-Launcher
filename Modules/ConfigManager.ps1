@@ -19,6 +19,13 @@ function Initialize-LauncherConfig {
             CustomMirrorUrl = ""
             AutoInstallModLoaderDependencies = $true
             DefaultModLoader = "None"
+            VersionIsolation = $true
+            IsolateGameDirs = $true
+            IsolateSaveDirs = $true
+            IsolateResourcePacks = $true
+            IsolateScreenshots = $false
+            IsolateShaderPacks = $true
+            IsolateMods = $true
         }
 
         $defaultConfig | ConvertTo-Json | Set-Content -Path $configFile
@@ -51,6 +58,13 @@ function Get-LauncherConfig {
             CustomMirrorUrl = ""
             AutoInstallModLoaderDependencies = $true
             DefaultModLoader = "None"
+            VersionIsolation = $true
+            IsolateGameDirs = $true
+            IsolateSaveDirs = $true
+            IsolateResourcePacks = $true
+            IsolateScreenshots = $false
+            IsolateShaderPacks = $true
+            IsolateMods = $true
         }
 
         # Check for missing properties and add them with default values
@@ -111,7 +125,14 @@ function Update-LauncherConfig {
         [string]$CustomMirrorUrl,
         [switch]$AutoInstallModLoaderDependencies,
         [string]$DefaultModLoader,
-        [string]$LastVersion
+        [string]$LastVersion,
+        [switch]$VersionIsolation,
+        [switch]$IsolateGameDirs,
+        [switch]$IsolateSaveDirs,
+        [switch]$IsolateResourcePacks,
+        [switch]$IsolateScreenshots,
+        [switch]$IsolateShaderPacks,
+        [switch]$IsolateMods
     )
 
     $config = Get-LauncherConfig
@@ -164,6 +185,34 @@ function Update-LauncherConfig {
         $config.LastVersion = $LastVersion
     }
 
+    if ($PSBoundParameters.ContainsKey('VersionIsolation')) {
+        $config.VersionIsolation = $VersionIsolation.IsPresent
+    }
+
+    if ($PSBoundParameters.ContainsKey('IsolateGameDirs')) {
+        $config.IsolateGameDirs = $IsolateGameDirs.IsPresent
+    }
+
+    if ($PSBoundParameters.ContainsKey('IsolateSaveDirs')) {
+        $config.IsolateSaveDirs = $IsolateSaveDirs.IsPresent
+    }
+
+    if ($PSBoundParameters.ContainsKey('IsolateResourcePacks')) {
+        $config.IsolateResourcePacks = $IsolateResourcePacks.IsPresent
+    }
+
+    if ($PSBoundParameters.ContainsKey('IsolateScreenshots')) {
+        $config.IsolateScreenshots = $IsolateScreenshots.IsPresent
+    }
+
+    if ($PSBoundParameters.ContainsKey('IsolateShaderPacks')) {
+        $config.IsolateShaderPacks = $IsolateShaderPacks.IsPresent
+    }
+
+    if ($PSBoundParameters.ContainsKey('IsolateMods')) {
+        $config.IsolateMods = $IsolateMods.IsPresent
+    }
+
     Save-LauncherConfig -Config $config
 }
 
@@ -185,7 +234,9 @@ function Show-SettingsMenu {
         Write-Host "6. Download Mirror (Current: $($config.DownloadMirror))"
         $autoInstallStatus = if ($config.AutoInstallModLoaderDependencies) { 'Enabled' } else { 'Disabled' }
         Write-Host "7. Mod Loader Settings (Auto-Install Dependencies: $autoInstallStatus, Default: $($config.DefaultModLoader))"
-        Write-Host "8. Return to Main Menu"
+        $versionIsolationStatus = if ($config.VersionIsolation) { 'Enabled' } else { 'Disabled' }
+        Write-Host "8. Version Isolation (Current: $versionIsolationStatus)"
+        Write-Host "9. Return to Main Menu"
 
         $choice = Read-Host "Please select an option"
 
@@ -372,6 +423,124 @@ function Show-SettingsMenu {
                 }
             }
             "8" {
+                Clear-Host
+                Write-Host "===== Version Isolation Settings =====" -ForegroundColor Cyan
+
+                # Main version isolation toggle
+                $versionIsolationStatus = if ($config.VersionIsolation) { 'Enabled' } else { 'Disabled' }
+                Write-Host "1. Version Isolation (Current: $versionIsolationStatus)"
+
+                # Individual isolation options
+                if ($config.VersionIsolation) {
+                    $isolateGameDirsStatus = if ($config.IsolateGameDirs) { 'Enabled' } else { 'Disabled' }
+                    Write-Host "2. Isolate Game Directories (Current: $isolateGameDirsStatus)"
+
+                    $isolateSaveDirsStatus = if ($config.IsolateSaveDirs) { 'Enabled' } else { 'Disabled' }
+                    Write-Host "3. Isolate Save Directories (Current: $isolateSaveDirsStatus)"
+
+                    $isolateResourcePacksStatus = if ($config.IsolateResourcePacks) { 'Enabled' } else { 'Disabled' }
+                    Write-Host "4. Isolate Resource Packs (Current: $isolateResourcePacksStatus)"
+
+                    $isolateScreenshotsStatus = if ($config.IsolateScreenshots) { 'Enabled' } else { 'Disabled' }
+                    Write-Host "5. Isolate Screenshots (Current: $isolateScreenshotsStatus)"
+
+                    $isolateShaderPacksStatus = if ($config.IsolateShaderPacks) { 'Enabled' } else { 'Disabled' }
+                    Write-Host "6. Isolate Shader Packs (Current: $isolateShaderPacksStatus)"
+
+                    $isolateModsStatus = if ($config.IsolateMods) { 'Enabled' } else { 'Disabled' }
+                    Write-Host "7. Isolate Mods (Current: $isolateModsStatus)"
+                }
+
+                Write-Host "0. Return to Settings Menu" -ForegroundColor Yellow
+
+                $isolationChoice = Read-Host "Please select an option"
+
+                switch ($isolationChoice) {
+                    "1" {
+                        $enableIsolation = Read-Host "Enable version isolation? (Y/N)"
+                        $isolationEnabled = $enableIsolation -eq "Y" -or $enableIsolation -eq "y"
+                        Update-LauncherConfig -VersionIsolation:$isolationEnabled
+
+                        $statusText = if ($isolationEnabled) { "enabled" } else { "disabled" }
+                        Write-Host "Version isolation $statusText" -ForegroundColor Green
+                        Start-Sleep -Seconds 1
+                    }
+                    "2" {
+                        if ($config.VersionIsolation) {
+                            $enableIsolateGameDirs = Read-Host "Isolate game directories? (Y/N)"
+                            $isolateGameDirsEnabled = $enableIsolateGameDirs -eq "Y" -or $enableIsolateGameDirs -eq "y"
+                            Update-LauncherConfig -IsolateGameDirs:$isolateGameDirsEnabled
+
+                            $statusText = if ($isolateGameDirsEnabled) { "enabled" } else { "disabled" }
+                            Write-Host "Game directories isolation $statusText" -ForegroundColor Green
+                            Start-Sleep -Seconds 1
+                        }
+                    }
+                    "3" {
+                        if ($config.VersionIsolation) {
+                            $enableIsolateSaveDirs = Read-Host "Isolate save directories? (Y/N)"
+                            $isolateSaveDirsEnabled = $enableIsolateSaveDirs -eq "Y" -or $enableIsolateSaveDirs -eq "y"
+                            Update-LauncherConfig -IsolateSaveDirs:$isolateSaveDirsEnabled
+
+                            $statusText = if ($isolateSaveDirsEnabled) { "enabled" } else { "disabled" }
+                            Write-Host "Save directories isolation $statusText" -ForegroundColor Green
+                            Start-Sleep -Seconds 1
+                        }
+                    }
+                    "4" {
+                        if ($config.VersionIsolation) {
+                            $enableIsolateResourcePacks = Read-Host "Isolate resource packs? (Y/N)"
+                            $isolateResourcePacksEnabled = $enableIsolateResourcePacks -eq "Y" -or $enableIsolateResourcePacks -eq "y"
+                            Update-LauncherConfig -IsolateResourcePacks:$isolateResourcePacksEnabled
+
+                            $statusText = if ($isolateResourcePacksEnabled) { "enabled" } else { "disabled" }
+                            Write-Host "Resource packs isolation $statusText" -ForegroundColor Green
+                            Start-Sleep -Seconds 1
+                        }
+                    }
+                    "5" {
+                        if ($config.VersionIsolation) {
+                            $enableIsolateScreenshots = Read-Host "Isolate screenshots? (Y/N)"
+                            $isolateScreenshotsEnabled = $enableIsolateScreenshots -eq "Y" -or $enableIsolateScreenshots -eq "y"
+                            Update-LauncherConfig -IsolateScreenshots:$isolateScreenshotsEnabled
+
+                            $statusText = if ($isolateScreenshotsEnabled) { "enabled" } else { "disabled" }
+                            Write-Host "Screenshots isolation $statusText" -ForegroundColor Green
+                            Start-Sleep -Seconds 1
+                        }
+                    }
+                    "6" {
+                        if ($config.VersionIsolation) {
+                            $enableIsolateShaderPacks = Read-Host "Isolate shader packs? (Y/N)"
+                            $isolateShaderPacksEnabled = $enableIsolateShaderPacks -eq "Y" -or $enableIsolateShaderPacks -eq "y"
+                            Update-LauncherConfig -IsolateShaderPacks:$isolateShaderPacksEnabled
+
+                            $statusText = if ($isolateShaderPacksEnabled) { "enabled" } else { "disabled" }
+                            Write-Host "Shader packs isolation $statusText" -ForegroundColor Green
+                            Start-Sleep -Seconds 1
+                        }
+                    }
+                    "7" {
+                        if ($config.VersionIsolation) {
+                            $enableIsolateMods = Read-Host "Isolate mods? (Y/N)"
+                            $isolateModsEnabled = $enableIsolateMods -eq "Y" -or $enableIsolateMods -eq "y"
+                            Update-LauncherConfig -IsolateMods:$isolateModsEnabled
+
+                            $statusText = if ($isolateModsEnabled) { "enabled" } else { "disabled" }
+                            Write-Host "Mods isolation $statusText" -ForegroundColor Green
+                            Start-Sleep -Seconds 1
+                        }
+                    }
+                    "0" {
+                        # Return to settings menu
+                    }
+                    default {
+                        Write-Host "Invalid choice, please try again" -ForegroundColor Red
+                        Start-Sleep -Seconds 1
+                    }
+                }
+            }
+            "9" {
                 return
             }
             default {

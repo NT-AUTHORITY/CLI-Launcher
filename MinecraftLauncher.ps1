@@ -1,5 +1,5 @@
 # Minecraft Launcher - Main Script
-# Author: Augment Agent
+# Author: NT_AUTHORITY
 # Description: A simple Minecraft launcher using PowerShell and embedded C#
 
 # Set error action preference
@@ -13,6 +13,7 @@ $minecraftPath = Join-Path -Path $launcherRoot -ChildPath "Minecraft"
 $versionsPath = Join-Path -Path $minecraftPath -ChildPath "versions"
 $librariesPath = Join-Path -Path $minecraftPath -ChildPath "libraries"
 $assetsPath = Join-Path -Path $minecraftPath -ChildPath "assets"
+$instancesPath = Join-Path -Path $minecraftPath -ChildPath "instances"
 
 # Create necessary directories
 if (-not (Test-Path -Path $modulesPath)) { New-Item -Path $modulesPath -ItemType Directory | Out-Null }
@@ -21,6 +22,7 @@ if (-not (Test-Path -Path $minecraftPath)) { New-Item -Path $minecraftPath -Item
 if (-not (Test-Path -Path $versionsPath)) { New-Item -Path $versionsPath -ItemType Directory | Out-Null }
 if (-not (Test-Path -Path $librariesPath)) { New-Item -Path $librariesPath -ItemType Directory | Out-Null }
 if (-not (Test-Path -Path $assetsPath)) { New-Item -Path $assetsPath -ItemType Directory | Out-Null }
+if (-not (Test-Path -Path $instancesPath)) { New-Item -Path $instancesPath -ItemType Directory | Out-Null }
 
 # Import modules
 . (Join-Path -Path $modulesPath -ChildPath "ConfigManager.ps1")
@@ -29,6 +31,7 @@ if (-not (Test-Path -Path $assetsPath)) { New-Item -Path $assetsPath -ItemType D
 . (Join-Path -Path $modulesPath -ChildPath "VersionManager.ps1")
 . (Join-Path -Path $modulesPath -ChildPath "GameLauncher.ps1")
 . (Join-Path -Path $modulesPath -ChildPath "UI.ps1")
+. (Join-Path -Path $modulesPath -ChildPath "VersionIsolation.ps1")
 
 # Import mod loader modules
 . (Join-Path -Path $modulesPath -ChildPath "ModLoaderCommon.ps1")
