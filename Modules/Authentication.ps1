@@ -5,6 +5,9 @@
 Add-Type -AssemblyName System.Web
 Add-Type -AssemblyName System.Security
 
+# Define accounts file path
+$accountsFile = Join-Path -Path $configPath -ChildPath "accounts.json"
+
 # Authentication module functions
 
 # Generate a code verifier for PKCE
@@ -426,9 +429,10 @@ function Invoke-Authentication {
             Username = $playerProfile.name
             UUID = $playerProfile.id
             ExpiresAt = (Get-Date).AddHours(24).ToString("o")
+            IsOffline = $false
         }
 
-        Save-AuthenticationInfo -AuthInfo $authInfo
+        Save-AuthenticationInfo -AuthInfo $authInfo -AddToAccounts
 
         Write-DebugLog -Message "Authentication successful for user: $($playerProfile.name)" -Source "Authentication" -Level "Info"
         Write-Host "Authentication successful! Welcome, $($playerProfile.name)!" -ForegroundColor Green
@@ -495,7 +499,10 @@ function Get-AuthenticationStatus {
 function Save-AuthenticationInfo {
     param (
         [Parameter(Mandatory = $true)]
-        [hashtable]$AuthInfo
+        [hashtable]$AuthInfo,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$AddToAccounts
     )
 
     $configFile = Join-Path -Path $configPath -ChildPath "auth.json"
@@ -505,10 +512,180 @@ function Save-AuthenticationInfo {
         $AuthInfo | ConvertTo-Json | Set-Content -Path $configFile
         Write-DebugLog -Message "Authentication information saved" -Source "Authentication" -Level "Debug"
         Write-Host "Authentication information saved" -ForegroundColor Green
+
+        # If AddToAccounts is specified, also save to accounts list
+        if ($AddToAccounts) {
+            Add-AccountToList -AuthInfo $AuthInfo
+        }
     }
     catch {
         Write-DebugLog -Message "Error saving authentication information: $($_.Exception.Message)" -Source "Authentication" -Level "Error"
         Handle-Error -ErrorRecord $_ -Source "Authentication" -CustomMessage "Error saving authentication information" -Continue
+    }
+}
+
+# Get accounts list
+function Get-AccountsList {
+    if (-not (Test-Path -Path $accountsFile)) {
+        return @()
+    }
+
+    try {
+        Write-DebugLog -Message "Reading accounts list" -Source "Authentication" -Level "Debug"
+        $content = Get-Content -Path $accountsFile -Raw
+
+        if ([string]::IsNullOrWhiteSpace($content)) {
+            return @()
+        }
+
+        $accounts = $content | ConvertFrom-Json
+
+        # Ensure we return an array
+        if ($accounts -isnot [Array]) {
+            $accounts = @($accounts)
+        }
+
+        return $accounts
+    }
+    catch {
+        Write-DebugLog -Message "Error reading accounts list: $($_.Exception.Message)" -Source "Authentication" -Level "Error"
+        Write-Host "Error reading accounts list" -ForegroundColor Red
+        return @()
+    }
+}
+
+# Add account to list
+function Add-AccountToList {
+    param (
+        [Parameter(Mandatory = $true)]
+        [hashtable]$AuthInfo
+    )
+
+    try {
+        Write-DebugLog -Message "Adding account to list: $($AuthInfo.Username)" -Source "Authentication" -Level "Debug"
+
+        # Get existing accounts
+        $accounts = Get-AccountsList
+
+        # Create account object
+        $account = @{
+            Username = $AuthInfo.Username
+            UUID = $AuthInfo.UUID
+            AccessToken = $AuthInfo.AccessToken
+            ExpiresAt = $AuthInfo.ExpiresAt
+            IsOffline = $AuthInfo.IsOffline -eq $true
+            LastUsed = (Get-Date).ToString("o")
+        }
+
+        # Check if account already exists
+        $existingIndex = -1
+        for ($i = 0; $i -lt $accounts.Count; $i++) {
+            if ($accounts[$i].Username -eq $AuthInfo.Username -and $accounts[$i].IsOffline -eq ($AuthInfo.IsOffline -eq $true)) {
+                $existingIndex = $i
+                break
+            }
+        }
+
+        # Update or add account
+        if ($existingIndex -ge 0) {
+            Write-DebugLog -Message "Updating existing account in list" -Source "Authentication" -Level "Debug"
+            $accounts[$existingIndex] = $account
+        }
+        else {
+            Write-DebugLog -Message "Adding new account to list" -Source "Authentication" -Level "Debug"
+            # Create a new array with the new account
+            $newAccounts = @()
+            foreach ($acc in $accounts) {
+                $newAccounts += $acc
+            }
+            $newAccounts += $account
+            $accounts = $newAccounts
+        }
+
+        # Save accounts list
+        $accounts | ConvertTo-Json | Set-Content -Path $accountsFile
+        Write-DebugLog -Message "Account added to list" -Source "Authentication" -Level "Debug"
+
+        return $true
+    }
+    catch {
+        Write-DebugLog -Message "Error adding account to list: $($_.Exception.Message)" -Source "Authentication" -Level "Error"
+        Write-Host "Error adding account to list" -ForegroundColor Red
+        return $false
+    }
+}
+
+# Remove account from list
+function Remove-AccountFromList {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Username,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$IsOffline
+    )
+
+    try {
+        Write-DebugLog -Message "Removing account from list: $Username" -Source "Authentication" -Level "Debug"
+
+        # Get existing accounts
+        $accounts = Get-AccountsList
+
+        # Filter out the account to remove
+        $updatedAccounts = $accounts | Where-Object {
+            -not ($_.Username -eq $Username -and $_.IsOffline -eq $IsOffline.IsPresent)
+        }
+
+        # Save updated accounts list
+        $updatedAccounts | ConvertTo-Json | Set-Content -Path $accountsFile
+        Write-DebugLog -Message "Account removed from list" -Source "Authentication" -Level "Debug"
+
+        return $true
+    }
+    catch {
+        Write-DebugLog -Message "Error removing account from list: $($_.Exception.Message)" -Source "Authentication" -Level "Error"
+        Write-Host "Error removing account from list" -ForegroundColor Red
+        return $false
+    }
+}
+
+# Switch to account
+function Switch-ToAccount {
+    param (
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]$Account
+    )
+
+    try {
+        Write-DebugLog -Message "Switching to account: $($Account.Username)" -Source "Authentication" -Level "Debug"
+
+        # Create auth info from account
+        $authInfo = @{
+            Username = $Account.Username
+            UUID = $Account.UUID
+            AccessToken = $Account.AccessToken
+            ExpiresAt = $Account.ExpiresAt
+            IsOffline = $Account.IsOffline
+        }
+
+        # Update last used timestamp
+        $Account.LastUsed = (Get-Date).ToString("o")
+
+        # Save auth info
+        Save-AuthenticationInfo -AuthInfo $authInfo
+
+        # Update account in list
+        Add-AccountToList -AuthInfo $authInfo
+
+        Write-DebugLog -Message "Switched to account: $($Account.Username)" -Source "Authentication" -Level "Info"
+        Write-Host "Switched to account: $($Account.Username)" -ForegroundColor Green
+
+        return $true
+    }
+    catch {
+        Write-DebugLog -Message "Error switching account: $($_.Exception.Message)" -Source "Authentication" -Level "Error"
+        Write-Host "Error switching account" -ForegroundColor Red
+        return $false
     }
 }
 
@@ -536,7 +713,7 @@ function Invoke-OfflineLogin {
         }
 
         # Save authentication info
-        Save-AuthenticationInfo -AuthInfo $authInfo
+        Save-AuthenticationInfo -AuthInfo $authInfo -AddToAccounts
 
         Write-DebugLog -Message "Offline login successful for user: $Username" -Source "Authentication" -Level "Info"
         Write-Host "Offline login successful! Welcome, $Username!" -ForegroundColor Green
@@ -552,16 +729,38 @@ function Invoke-OfflineLogin {
 
 # Logout
 function Invoke-Logout {
+    param (
+        [Parameter(Mandatory = $false)]
+        [switch]$Silent
+    )
+
     $configFile = Join-Path -Path $configPath -ChildPath "auth.json"
 
     Write-DebugLog -Message "Logging out" -Source "Authentication" -Level "Debug"
     if (Test-Path -Path $configFile) {
+        # Get current auth info before removing it
+        try {
+            $authInfo = Get-Content -Path $configFile -Raw | ConvertFrom-Json
+            $username = $authInfo.Username
+            Write-DebugLog -Message "Logging out user: $username" -Source "Authentication" -Level "Debug"
+        }
+        catch {
+            Write-DebugLog -Message "Could not read auth info before logout: $($_.Exception.Message)" -Source "Authentication" -Level "Warning"
+        }
+
+        # Remove auth file
         Remove-Item -Path $configFile -Force
         Write-DebugLog -Message "User logged out successfully" -Source "Authentication" -Level "Info"
-        Write-Host "Successfully logged out" -ForegroundColor Green
+
+        if (-not $Silent) {
+            Write-Host "Successfully logged out" -ForegroundColor Green
+        }
     }
     else {
         Write-DebugLog -Message "Logout attempted but user was not logged in" -Source "Authentication" -Level "Warning"
-        Write-Host "You are not logged in" -ForegroundColor Yellow
+
+        if (-not $Silent) {
+            Write-Host "You are not logged in" -ForegroundColor Yellow
+        }
     }
 }

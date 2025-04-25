@@ -101,6 +101,10 @@ function Start-MinecraftGame {
     try {
         Write-DebugLog -Message "Starting game launch process for version $Version" -Source "GameLauncher" -Level "Info"
 
+        # Sync installed versions list
+        Write-DebugLog -Message "Synchronizing installed versions list" -Source "GameLauncher" -Level "Debug"
+        Sync-InstalledVersions -Silent
+
         # Check if version is installed
         $installedVersions = Get-InstalledVersions
         Write-DebugLog -Message "Checking if version $Version is installed" -Source "GameLauncher" -Level "Debug"

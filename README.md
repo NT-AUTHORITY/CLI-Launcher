@@ -7,8 +7,15 @@ A simple Minecraft launcher implemented using PowerShell and embedded C#.
 - Microsoft account authentication with offline mode support
   - Note: Microsoft authentication is not available now...
   - You can still use offline mode to play without Microsoft authentication
+- Account management with multiple account support
+  - Switch between different accounts without re-entering credentials
+  - Add multiple accounts (both Microsoft and offline)
+  - Delete accounts you no longer need
+  - Support for both Microsoft and offline accounts
 - Minecraft version management (download and installation)
-- Multi-threaded download support for faster installation
+  - Automatic detection and synchronization of installed versions
+  - Multi-threaded download support for faster installation
+  - Mirror download support for faster downloads in different regions
 - Game launching
 - Configuration management
 - Debug mode for troubleshooting
@@ -36,6 +43,7 @@ A simple Minecraft launcher implemented using PowerShell and embedded C#.
 - `Config/` - Configuration folder
   - `config.json` - Launcher configuration
   - `auth.json` - Authentication information (created automatically after login)
+  - `accounts.json` - Saved accounts list (created automatically when logging in)
   - `installed.json` - List of installed versions (created automatically after installing versions)
 - `Minecraft/` - Minecraft game files
   - `versions/` - Game versions

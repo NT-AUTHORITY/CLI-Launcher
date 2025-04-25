@@ -43,6 +43,10 @@ $config = Get-LauncherConfig
 Write-DebugLog -Message "Configuration loaded" -Source "Main" -Level "Debug"
 Write-DebugLog -Message "Debug mode: $($config.DebugMode)" -Source "Main" -Level "Debug"
 
+# Synchronize installed versions list
+Write-DebugLog -Message "Synchronizing installed versions list" -Source "Main" -Level "Debug"
+Sync-InstalledVersions -Silent
+
 # Check authentication status
 $authStatus = Get-AuthenticationStatus
 if ($authStatus.IsAuthenticated) {

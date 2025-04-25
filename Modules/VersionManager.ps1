@@ -279,7 +279,6 @@ function Start-MultiThreadedDownload {
         # Create and start jobs
         $jobs = @()
         $totalFiles = $DownloadList.Count
-        $fallbackCount = 0
 
         foreach ($item in $DownloadList) {
             # Convert URL to mirror URL if needed
@@ -659,6 +658,99 @@ function Add-InstalledVersion {
     }
 }
 
+# Synchronize installed versions list with actual installed versions
+function Sync-InstalledVersions {
+    param (
+        [switch]$Silent
+    )
+
+    $configFile = Join-Path -Path $configPath -ChildPath "installed.json"
+
+    try {
+        Write-DebugLog -Message "Synchronizing installed versions list" -Source "VersionManager" -Level "Info"
+
+        # Get current installed versions from config
+        $currentInstalledVersions = Get-InstalledVersions
+
+        # Scan versions directory for actual installed versions
+        $actualInstalledVersions = @()
+
+        if (Test-Path -Path $versionsPath) {
+            $versionDirs = Get-ChildItem -Path $versionsPath -Directory
+
+            foreach ($dir in $versionDirs) {
+                $versionId = $dir.Name
+                $versionJsonFile = Join-Path -Path $dir.FullName -ChildPath "$versionId.json"
+                $versionJarFile = Join-Path -Path $dir.FullName -ChildPath "$versionId.jar"
+
+                # Check if version files exist
+                if ((Test-Path -Path $versionJsonFile) -and (Test-Path -Path $versionJarFile)) {
+                    $actualInstalledVersions += $versionId
+                }
+                else {
+                    Write-DebugLog -Message "Incomplete version found: $versionId" -Source "VersionManager" -Level "Warning"
+                }
+            }
+        }
+
+        # Compare lists
+        $added = @()
+        $removed = @()
+
+        # Find versions that are installed but not in the list
+        foreach ($version in $actualInstalledVersions) {
+            if ($currentInstalledVersions -notcontains $version) {
+                $added += $version
+            }
+        }
+
+        # Find versions that are in the list but not actually installed
+        foreach ($version in $currentInstalledVersions) {
+            if ($actualInstalledVersions -notcontains $version) {
+                $removed += $version
+            }
+        }
+
+        # Update installed.json if changes were found
+        if ($added.Count -gt 0 -or $removed.Count -gt 0) {
+            # Save the updated list
+            $json = ConvertTo-Json -InputObject $actualInstalledVersions -Depth 1
+            Set-Content -Path $configFile -Value $json
+
+            Write-DebugLog -Message "Updated installed versions list: Added $($added.Count), Removed $($removed.Count)" -Source "VersionManager" -Level "Info"
+
+            if (-not $Silent) {
+                if ($added.Count -gt 0) {
+                    Write-Host "Added $($added.Count) version(s) to installed list:" -ForegroundColor Green
+                    foreach ($version in $added) {
+                        Write-Host "  - $version" -ForegroundColor Green
+                    }
+                }
+
+                if ($removed.Count -gt 0) {
+                    Write-Host "Removed $($removed.Count) version(s) from installed list:" -ForegroundColor Yellow
+                    foreach ($version in $removed) {
+                        Write-Host "  - $version" -ForegroundColor Yellow
+                    }
+                }
+            }
+
+            return $true
+        }
+        else {
+            Write-DebugLog -Message "Installed versions list is up to date" -Source "VersionManager" -Level "Debug"
+            return $false
+        }
+    }
+    catch {
+        Write-DebugLog -Message "Error synchronizing installed versions list: $($_.Exception.Message)" -Source "VersionManager" -Level "Error"
+        if (-not $Silent) {
+            Write-Host "Error synchronizing installed versions list" -ForegroundColor Red
+        }
+        return $false
+    }
+}
+
 # Display version menu
 function Show-VersionMenu {
     while ($true) {
@@ -696,6 +788,10 @@ function Show-VersionMenu {
             "2" {
                 Clear-Host
                 Write-Host "===== Installed Minecraft Versions =====" -ForegroundColor Green
+
+                # Sync installed versions before displaying
+                Sync-InstalledVersions
+
                 $installedVersions = Get-InstalledVersions
 
                 if ($installedVersions.Count -eq 0) {
