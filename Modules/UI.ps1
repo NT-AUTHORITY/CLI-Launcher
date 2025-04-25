@@ -38,8 +38,9 @@ function Show-MainMenu {
     Write-Host "1. Login/Logout"
     Write-Host "2. Version Management"
     Write-Host "3. Launch Game"
-    Write-Host "4. Settings"
-    Write-Host "5. Exit"
+    Write-Host "4. Launch Game with Mod Loader"
+    Write-Host "5. Settings"
+    Write-Host "6. Exit"
     Write-Host ""
 }
 

@@ -17,6 +17,8 @@ function Initialize-LauncherConfig {
             UseMultithreadDownload = $true
             DownloadMirror = "Official"
             CustomMirrorUrl = ""
+            AutoInstallModLoaderDependencies = $true
+            DefaultModLoader = "None"
         }
 
         $defaultConfig | ConvertTo-Json | Set-Content -Path $configFile
@@ -47,6 +49,8 @@ function Get-LauncherConfig {
             UseMultithreadDownload = $true
             DownloadMirror = "Official"
             CustomMirrorUrl = ""
+            AutoInstallModLoaderDependencies = $true
+            DefaultModLoader = "None"
         }
 
         # Check for missing properties and add them with default values
@@ -104,7 +108,10 @@ function Update-LauncherConfig {
         [int]$MaxDownloadThreads,
         [switch]$UseMultithreadDownload,
         [string]$DownloadMirror,
-        [string]$CustomMirrorUrl
+        [string]$CustomMirrorUrl,
+        [switch]$AutoInstallModLoaderDependencies,
+        [string]$DefaultModLoader,
+        [string]$LastVersion
     )
 
     $config = Get-LauncherConfig
@@ -145,6 +152,18 @@ function Update-LauncherConfig {
         $config.CustomMirrorUrl = $CustomMirrorUrl
     }
 
+    if ($PSBoundParameters.ContainsKey('AutoInstallModLoaderDependencies')) {
+        $config.AutoInstallModLoaderDependencies = $AutoInstallModLoaderDependencies.IsPresent
+    }
+
+    if ($DefaultModLoader) {
+        $config.DefaultModLoader = $DefaultModLoader
+    }
+
+    if ($LastVersion) {
+        $config.LastVersion = $LastVersion
+    }
+
     Save-LauncherConfig -Config $config
 }
 
@@ -156,14 +175,17 @@ function Show-SettingsMenu {
 
         Write-Host "===== Launcher Settings =====" -ForegroundColor Cyan
         Write-Host "1. Memory Settings (Current: Min $($config.MinMemory)MB, Max $($config.MaxMemory)MB)"
-        Write-Host "2. Java Path (Current: $($config.JavaPath -or 'Auto-detect'))"
+        $javaPathDisplay = if ([string]::IsNullOrEmpty($config.JavaPath)) { 'Auto-detect' } else { $config.JavaPath }
+        Write-Host "2. Java Path (Current: $javaPathDisplay)"
         Write-Host "3. Launcher Theme (Current: $($config.LauncherTheme))"
         $debugStatus = if ($config.DebugMode) { 'Enabled' } else { 'Disabled' }
         Write-Host "4. Debug Mode (Current: $debugStatus)"
         $multithreadStatus = if ($config.UseMultithreadDownload) { 'Enabled' } else { 'Disabled' }
         Write-Host "5. Multithread Download (Current: $multithreadStatus, Threads: $($config.MaxDownloadThreads))"
         Write-Host "6. Download Mirror (Current: $($config.DownloadMirror))"
-        Write-Host "7. Return to Main Menu"
+        $autoInstallStatus = if ($config.AutoInstallModLoaderDependencies) { 'Enabled' } else { 'Disabled' }
+        Write-Host "7. Mod Loader Settings (Auto-Install Dependencies: $autoInstallStatus, Default: $($config.DefaultModLoader))"
+        Write-Host "8. Return to Main Menu"
 
         $choice = Read-Host "Please select an option"
 
@@ -275,6 +297,81 @@ function Show-SettingsMenu {
                 Start-Sleep -Seconds 1
             }
             "7" {
+                Clear-Host
+                Write-Host "===== Mod Loader Settings =====" -ForegroundColor Cyan
+
+                # Auto-install dependencies
+                $autoInstallStatus = if ($config.AutoInstallModLoaderDependencies) { 'Enabled' } else { 'Disabled' }
+                Write-Host "1. Auto-Install Dependencies (Current: $autoInstallStatus)"
+
+                # Default mod loader
+                Write-Host "2. Default Mod Loader (Current: $($config.DefaultModLoader))"
+
+                # Return
+                Write-Host "3. Return to Settings Menu"
+
+                $modLoaderChoice = Read-Host "Please select an option"
+
+                switch ($modLoaderChoice) {
+                    "1" {
+                        $autoInstall = Read-Host "Auto-install mod loader dependencies? (Y/N)"
+                        $autoInstallEnabled = $autoInstall -eq "Y" -or $autoInstall -eq "y"
+                        Update-LauncherConfig -AutoInstallModLoaderDependencies:$autoInstallEnabled
+
+                        $statusText = if ($autoInstallEnabled) { "enabled" } else { "disabled" }
+                        Write-Host "Auto-install dependencies $statusText" -ForegroundColor Green
+                        Start-Sleep -Seconds 1
+                    }
+                    "2" {
+                        Clear-Host
+                        Write-Host "===== Default Mod Loader =====" -ForegroundColor Cyan
+                        Write-Host "Select a default mod loader:"
+                        Write-Host "1. None (Vanilla)"
+                        Write-Host "2. Fabric"
+                        Write-Host "3. Forge"
+                        Write-Host "4. NeoForge"
+                        Write-Host "5. OptiFine"
+
+                        $defaultLoaderChoice = Read-Host "Please select a default mod loader"
+
+                        switch ($defaultLoaderChoice) {
+                            "1" {
+                                Update-LauncherConfig -DefaultModLoader "None"
+                                Write-Host "Default mod loader set to None (Vanilla)" -ForegroundColor Green
+                            }
+                            "2" {
+                                Update-LauncherConfig -DefaultModLoader "Fabric"
+                                Write-Host "Default mod loader set to Fabric" -ForegroundColor Green
+                            }
+                            "3" {
+                                Update-LauncherConfig -DefaultModLoader "Forge"
+                                Write-Host "Default mod loader set to Forge" -ForegroundColor Green
+                            }
+                            "4" {
+                                Update-LauncherConfig -DefaultModLoader "NeoForge"
+                                Write-Host "Default mod loader set to NeoForge" -ForegroundColor Green
+                            }
+                            "5" {
+                                Update-LauncherConfig -DefaultModLoader "OptiFine"
+                                Write-Host "Default mod loader set to OptiFine" -ForegroundColor Green
+                            }
+                            default {
+                                Write-Host "Invalid choice, default mod loader not changed" -ForegroundColor Red
+                            }
+                        }
+
+                        Start-Sleep -Seconds 1
+                    }
+                    "3" {
+                        # Return to settings menu
+                    }
+                    default {
+                        Write-Host "Invalid choice, please try again" -ForegroundColor Red
+                        Start-Sleep -Seconds 1
+                    }
+                }
+            }
+            "8" {
                 return
             }
             default {

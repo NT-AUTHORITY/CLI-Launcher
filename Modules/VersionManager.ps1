@@ -759,7 +759,8 @@ function Show-VersionMenu {
         Write-Host "1. View available versions"
         Write-Host "2. View installed versions"
         Write-Host "3. Install version"
-        Write-Host "4. Return to main menu"
+        Write-Host "4. Manage mod loaders"
+        Write-Host "5. Return to main menu"
 
         $choice = Read-Host "Please select an option"
 
@@ -814,6 +815,44 @@ function Show-VersionMenu {
                 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
             "4" {
+                # Mod loader management
+                Clear-Host
+                Write-Host "===== Mod Loader Management =====" -ForegroundColor Green
+
+                # Sync installed versions before displaying
+                Sync-InstalledVersions
+
+                $installedVersions = Get-InstalledVersions
+
+                if ($installedVersions.Count -eq 0) {
+                    Write-Host "No Minecraft versions installed yet. Please install a version first." -ForegroundColor Yellow
+                    Write-Host "Press any key to continue..." -ForegroundColor Gray
+                    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+                } else {
+                    Write-Host "Select a Minecraft version to manage mod loaders:" -ForegroundColor Cyan
+
+                    for ($i = 0; $i -lt $installedVersions.Count; $i++) {
+                        Write-Host "$($i+1). $($installedVersions[$i])" -ForegroundColor White
+                    }
+
+                    Write-Host "0. Return to version menu" -ForegroundColor Yellow
+
+                    $versionChoice = Read-Host "Please select a version"
+
+                    if ($versionChoice -ne "0") {
+                        $versionIndex = [int]$versionChoice - 1
+
+                        if ($versionIndex -ge 0 -and $versionIndex -lt $installedVersions.Count) {
+                            $selectedVersion = $installedVersions[$versionIndex]
+                            Show-ModLoaderMenu -MinecraftVersion $selectedVersion
+                        } else {
+                            Write-Host "Invalid choice" -ForegroundColor Red
+                            Start-Sleep -Seconds 1
+                        }
+                    }
+                }
+            }
+            "5" {
                 return
             }
             default {

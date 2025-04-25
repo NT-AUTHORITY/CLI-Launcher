@@ -16,7 +16,12 @@ A simple Minecraft launcher implemented using PowerShell and embedded C#.
   - Automatic detection and synchronization of installed versions
   - Multi-threaded download support for faster installation
   - Mirror download support for faster downloads in different regions
-- Game launching
+- Mod loader support
+  - Fabric installation and management
+  - Forge installation and management
+  - NeoForge installation and management
+  - OptiFine installation and management
+- Game launching with vanilla or mod loader versions
 - Configuration management
 - Debug mode for troubleshooting
 
@@ -40,11 +45,17 @@ A simple Minecraft launcher implemented using PowerShell and embedded C#.
   - `GameLauncher.ps1` - Handles game launching
   - `ConfigManager.ps1` - Manages configuration and settings
   - `UI.ps1` - User interface functionality
+  - `ModLoaderCommon.ps1` - Common functionality for mod loaders
+  - `FabricManager.ps1` - Manages Fabric mod loader
+  - `ForgeManager.ps1` - Manages Forge mod loader
+  - `NeoForgeManager.ps1` - Manages NeoForge mod loader
+  - `OptiFineManager.ps1` - Manages OptiFine
 - `Config/` - Configuration folder
   - `config.json` - Launcher configuration
   - `auth.json` - Authentication information (created automatically after login)
   - `accounts.json` - Saved accounts list (created automatically when logging in)
   - `installed.json` - List of installed versions (created automatically after installing versions)
+  - `modloaders.json` - List of installed mod loaders (created automatically after installing mod loaders)
 - `Minecraft/` - Minecraft game files
   - `versions/` - Game versions
   - `libraries/` - Game library files

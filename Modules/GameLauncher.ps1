@@ -95,11 +95,39 @@ namespace MinecraftLauncher {
 function Start-MinecraftGame {
     param (
         [Parameter(Mandatory = $true)]
-        [string]$Version
+        [string]$Version,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$UseModLoader,
+
+        [Parameter(Mandatory = $false)]
+        [string]$ModLoaderType,
+
+        [Parameter(Mandatory = $false)]
+        [string]$ModLoaderVersion
     )
 
     try {
         Write-DebugLog -Message "Starting game launch process for version $Version" -Source "GameLauncher" -Level "Info"
+
+        # Check if we should use a mod loader
+        if ($UseModLoader -and $ModLoaderType -and $ModLoaderVersion) {
+            Write-DebugLog -Message "Using mod loader: $ModLoaderType $ModLoaderVersion" -Source "GameLauncher" -Level "Info"
+
+            # Launch game with mod loader
+            $result = Start-ModLoaderGame -MinecraftVersion $Version -ModLoaderType $ModLoaderType -ModLoaderVersion $ModLoaderVersion
+
+            if ($result) {
+                return
+            } else {
+                Write-Host "Failed to launch game with mod loader. Falling back to vanilla launch." -ForegroundColor Yellow
+            }
+        }
+
+        # Check if the version is a mod loader profile
+        if ($Version -match "^(fabric|forge|neoforge|optifine)-") {
+            Write-DebugLog -Message "Detected mod loader profile: $Version" -Source "GameLauncher" -Level "Debug"
+        }
 
         # Sync installed versions list
         Write-DebugLog -Message "Synchronizing installed versions list" -Source "GameLauncher" -Level "Debug"
