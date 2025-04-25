@@ -256,7 +256,7 @@ while ($true) {
 
                         # Launch the game with mod loader
                         Write-Host "Launching Minecraft $selectedVersion with $($selectedModLoader.Type) $($selectedModLoader.Version)..." -ForegroundColor Green
-                        Start-MinecraftGame -Version $selectedVersion -UseModLoader -ModLoaderType $selectedModLoader.Type -ModLoaderVersion $selectedModLoader.Version
+                        Start-ModLoaderGame -MinecraftVersion $selectedVersion -ModLoaderType $selectedModLoader.Type -ModLoaderVersion $selectedModLoader.Version
 
                         # Update last version in config
                         Update-LauncherConfig -LastVersion $selectedVersion

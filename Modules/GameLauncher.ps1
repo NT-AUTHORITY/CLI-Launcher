@@ -166,22 +166,16 @@ function Start-MinecraftGame {
     try {
         Write-DebugLog -Message "Starting game launch process for version $Version" -Source "GameLauncher" -Level "Info"
 
-        # Check if we should use a mod loader
+        # Check if we should use a mod loader - this is now handled directly in MinecraftLauncher.ps1
+        # to avoid circular references
         if ($UseModLoader -and $ModLoaderType -and $ModLoaderVersion) {
             Write-DebugLog -Message "Using mod loader: $ModLoaderType $ModLoaderVersion" -Source "GameLauncher" -Level "Info"
-
-            # Launch game with mod loader
-            $result = Start-ModLoaderGame -MinecraftVersion $Version -ModLoaderType $ModLoaderType -ModLoaderVersion $ModLoaderVersion
-
-            if ($result) {
-                return
-            } else {
-                Write-Host "Failed to launch game with mod loader. Falling back to vanilla launch." -ForegroundColor Yellow
-            }
+            Write-Host "This code path should not be reached. Please report this as a bug." -ForegroundColor Red
+            return
         }
 
         # Check if the version is a mod loader profile
-        if ($Version -match "^(fabric|forge|neoforge|optifine)-") {
+        if ($Version -match "^(fabric|forge|neoforge|optifine)") {
             Write-DebugLog -Message "Detected mod loader profile: $Version" -Source "GameLauncher" -Level "Debug"
         }
 
@@ -193,19 +187,48 @@ function Start-MinecraftGame {
         $installedVersions = Get-InstalledVersions
         Write-DebugLog -Message "Checking if version $Version is installed" -Source "GameLauncher" -Level "Debug"
 
-        if ($installedVersions -notcontains $Version) {
-            Write-DebugLog -Message "Version $Version is not installed" -Source "GameLauncher" -Level "Warning"
-            Write-Host "Version $Version is not installed. Install now? (Y/N)" -ForegroundColor Yellow
-            $install = Read-Host
+        # Special handling for mod loader profiles
+        $isModLoaderProfile = $Version -match "^(fabric|forge|neoforge|optifine)"
 
-            if ($install -eq "Y" -or $install -eq "y") {
-                Write-DebugLog -Message "Installing version $Version" -Source "GameLauncher" -Level "Debug"
-                Install-MinecraftVersion -Version $Version
-            }
-            else {
-                Write-DebugLog -Message "Game launch canceled by user" -Source "GameLauncher" -Level "Info"
-                Write-Host "Game launch canceled" -ForegroundColor Red
-                return
+        if ($installedVersions -notcontains $Version) {
+            # If it's a mod loader profile, check if the directory exists directly
+            if ($isModLoaderProfile) {
+                $versionDir = Join-Path -Path $versionsPath -ChildPath $Version
+                $versionJsonPath = Join-Path -Path $versionDir -ChildPath "$Version.json"
+                $versionJarPath = Join-Path -Path $versionDir -ChildPath "$Version.jar"
+
+                # For Fabric mod loader, we only check if the JSON file exists
+                if ($Version -match "^fabric-") {
+                    if (Test-Path -Path $versionJsonPath) {
+                        Write-DebugLog -Message "Fabric mod loader profile $Version exists but is not in installed.json, adding it" -Source "GameLauncher" -Level "Info"
+                        Add-InstalledVersion -Version $Version
+                    } else {
+                        Write-DebugLog -Message "Fabric mod loader profile $Version does not exist" -Source "GameLauncher" -Level "Warning"
+                        Write-Host "Fabric mod loader profile $Version does not exist. Please reinstall the mod loader." -ForegroundColor Red
+                        return
+                    }
+                } elseif ((Test-Path -Path $versionJsonPath) -and (Test-Path -Path $versionJarPath)) {
+                    Write-DebugLog -Message "Mod loader profile $Version exists but is not in installed.json, adding it" -Source "GameLauncher" -Level "Info"
+                    Add-InstalledVersion -Version $Version
+                } else {
+                    Write-DebugLog -Message "Mod loader profile $Version does not exist" -Source "GameLauncher" -Level "Warning"
+                    Write-Host "Mod loader profile $Version does not exist. Please reinstall the mod loader." -ForegroundColor Red
+                    return
+                }
+            } else {
+                Write-DebugLog -Message "Version $Version is not installed" -Source "GameLauncher" -Level "Warning"
+                Write-Host "Version $Version is not installed. Install now? (Y/N)" -ForegroundColor Yellow
+                $install = Read-Host
+
+                if ($install -eq "Y" -or $install -eq "y") {
+                    Write-DebugLog -Message "Installing version $Version" -Source "GameLauncher" -Level "Debug"
+                    Install-MinecraftVersion -Version $Version
+                }
+                else {
+                    Write-DebugLog -Message "Game launch canceled by user" -Source "GameLauncher" -Level "Info"
+                    Write-Host "Game launch canceled" -ForegroundColor Red
+                    return
+                }
             }
         }
 
@@ -243,9 +266,20 @@ function Start-MinecraftGame {
 
         Write-DebugLog -Message "Checking version files integrity" -Source "GameLauncher" -Level "Debug"
 
-        if (-not (Test-Path -Path $versionJsonPath) -or -not (Test-Path -Path $versionJarPath)) {
-            Write-DebugLog -Message "Version files are incomplete, reinstalling" -Source "GameLauncher" -Level "Warning"
-            Write-Host "Version files are incomplete, reinstalling..." -ForegroundColor Yellow
+        # Check if this is a Fabric mod loader profile
+        $isFabricProfile = $Version -match "^fabric-"
+
+        if (-not (Test-Path -Path $versionJsonPath)) {
+            Write-DebugLog -Message "Version JSON file not found, reinstalling" -Source "GameLauncher" -Level "Warning"
+            Write-Host "Version JSON file not found, reinstalling..." -ForegroundColor Yellow
+            Install-MinecraftVersion -Version $Version
+        }
+
+        # For Fabric mod loader, we don't need to check for the JAR file
+        # because Fabric uses the base game JAR file
+        if (-not $isFabricProfile -and -not (Test-Path -Path $versionJarPath)) {
+            Write-DebugLog -Message "Version JAR file not found, reinstalling" -Source "GameLauncher" -Level "Warning"
+            Write-Host "Version JAR file not found, reinstalling..." -ForegroundColor Yellow
             Install-MinecraftVersion -Version $Version
         }
 
@@ -282,6 +316,55 @@ function Start-MinecraftGame {
 
         # Build classpath
         Write-DebugLog -Message "Building classpath" -Source "GameLauncher" -Level "Debug"
+
+        # For Fabric mod loader, we need to use the base game JAR file
+        if ($Version -match "^fabric-") {
+            # Extract the base Minecraft version from the Fabric profile name
+            if ($Version -match "fabric-loader-[\d\.]+-(.+)") {
+                $baseVersion = $matches[1]
+                Write-DebugLog -Message "Fabric profile detected, using base Minecraft version: $baseVersion" -Source "GameLauncher" -Level "Info"
+
+                # Get the base game JAR path
+                $baseVersionDir = Join-Path -Path $versionsPath -ChildPath $baseVersion
+                $baseVersionJarPath = Join-Path -Path $baseVersionDir -ChildPath "$baseVersion.jar"
+
+                if (Test-Path -Path $baseVersionJarPath) {
+                    Write-DebugLog -Message "Using base game JAR: $baseVersionJarPath" -Source "GameLauncher" -Level "Debug"
+                    $versionJarPath = $baseVersionJarPath
+                } else {
+                    Write-DebugLog -Message "Base game JAR not found: $baseVersionJarPath" -Source "GameLauncher" -Level "Warning"
+                    Write-Host "Base game JAR not found. Please make sure Minecraft $baseVersion is installed." -ForegroundColor Yellow
+
+                    # Try to install the base version if it's not installed
+                    Write-Host "Do you want to install Minecraft $baseVersion now? (Y/N)" -ForegroundColor Yellow
+                    $install = Read-Host
+
+                    if ($install -eq "Y" -or $install -eq "y") {
+                        Write-DebugLog -Message "Installing base version $baseVersion" -Source "GameLauncher" -Level "Debug"
+                        Install-MinecraftVersion -Version $baseVersion
+
+                        # Check if installation was successful
+                        if (Test-Path -Path $baseVersionJarPath) {
+                            Write-DebugLog -Message "Base version installed successfully, using JAR: $baseVersionJarPath" -Source "GameLauncher" -Level "Debug"
+                            $versionJarPath = $baseVersionJarPath
+                        } else {
+                            Write-DebugLog -Message "Failed to install base version $baseVersion" -Source "GameLauncher" -Level "Error"
+                            Write-Host "Failed to install Minecraft $baseVersion. Cannot launch with Fabric mod loader." -ForegroundColor Red
+                            return
+                        }
+                    } else {
+                        Write-DebugLog -Message "User declined to install base version $baseVersion" -Source "GameLauncher" -Level "Info"
+                        Write-Host "Cannot launch with Fabric mod loader without the base game. Aborting." -ForegroundColor Red
+                        return
+                    }
+                }
+            } else {
+                Write-DebugLog -Message "Could not extract base version from Fabric profile name: $Version" -Source "GameLauncher" -Level "Error"
+                Write-Host "Could not determine base Minecraft version from Fabric profile. Cannot launch." -ForegroundColor Red
+                return
+            }
+        }
+
         $classPath = [MinecraftLauncher.GameLauncher]::BuildClassPath($librariesPath, $versionJarPath, $libraryPaths)
 
         # Build game arguments
